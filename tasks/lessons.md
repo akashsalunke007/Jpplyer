@@ -14,3 +14,16 @@ _Update this file after every bug fix or correction._
 - Always screenshot before AND after submit — saves debugging time when form state is unexpected.
 - Strip markdown fences (`\`\`\`json`) before calling `json.loads()` on all Claude API responses.
 - Never expose `.env` values in error messages, logs, or email bodies.
+
+---
+
+## Lesson 2026-05-19: Migrated to fully free stack
+**What went wrong:** Initial build used paid services (Anthropic API, Apify actors, Twilio SMS, SendGrid).
+**Root cause:** Default to well-known SDKs without checking free alternatives.
+**Rules added:**
+- Use **JobSpy** (open-source) instead of Apify actors — no API key, no cost, scrapes LinkedIn + Indeed directly.
+- Use **Google Gemini 1.5 Flash** (free tier: 1,500 req/day) instead of Anthropic Claude for scoring, ATS rewriting, and form detection.
+- Use **Telegram Bot** (free forever) instead of Twilio for phone notifications — setup takes 2 minutes via @BotFather.
+- Use **Gmail SMTP** (free, 500/day) instead of SendGrid for all email — requires App Password with 2FA enabled.
+- Gemini returns markdown fences more often than Claude — always strip with `re.sub(r"^```(?:json)?", "", text)` before `json.loads()`.
+- Gemini free tier is 15 RPM — do not add `time.sleep()` manually; let the 429 retry handler in orchestrator catch it naturally.

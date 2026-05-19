@@ -1,25 +1,25 @@
-# Core
-anthropic>=0.40.0
-apify-client>=1.7.0
-playwright>=1.44.0
+# ── Job scraping (free, no API key needed) ────────────────────────────────────
+python-jobspy>=0.31.0
 
-# PDF processing
+# ── AI / LLM (Google Gemini — free tier: 1500 req/day, 1M tokens/day) ────────
+openai>=1.30.0
+
+# ── PDF processing ────────────────────────────────────────────────────────────
 pdfplumber>=0.11.0
 reportlab>=4.2.0
 fpdf2>=2.7.9
 
-# Notifications
-twilio>=9.0.0
-sendgrid>=6.11.0
+# ── Browser automation ────────────────────────────────────────────────────────
+playwright>=1.44.0
 
-# Utilities
+# ── Utilities ─────────────────────────────────────────────────────────────────
 loguru>=0.7.2
 python-dotenv>=1.0.0
 jinja2>=3.1.4
 aiofiles>=24.1.0
 httpx>=0.27.0
 
-# Testing
+# ── Testing ───────────────────────────────────────────────────────────────────
 pytest>=8.2.0
 pytest-asyncio>=0.23.0
 pytest-mock>=3.14.0

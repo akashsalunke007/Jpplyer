@@ -1,77 +1,101 @@
-"""Claude API ATS resume optimizer — up to 3 rewrite passes."""
-import json
-import anthropic
+"""OpenAI ATS resume optimizer — up to 3 rewrite passes."""
+import re
+import time
+from openai import OpenAI, RateLimitError
 from loguru import logger
 from src import config
 from src.phase2_resume.scorer import calculate_ats_score
 
-_client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+_client = OpenAI(api_key=config.OPENAI_API_KEY)
 
-ATS_OPTIMIZER_SYSTEM = """
-You are an expert ATS resume optimizer. Rewrite the provided resume section to:
+ATS_SYSTEM = """
+You are an expert ATS resume optimizer. Rewrite the provided resume to:
 1. Mirror exact keywords from the job description (verbatim where natural)
 2. Quantify achievements wherever possible
 3. Use action verbs that match the JD's language
 4. Keep all facts true — never invent experience
 
-Output ONLY the rewritten resume text. No commentary.
+Output ONLY the rewritten resume text. No commentary. No markdown fences.
 """
 
-ATS_OPTIMIZER_USER = """
+ATS_USER = """
 JOB DESCRIPTION:
 {job_description}
 
-CURRENT RESUME SECTION:
+CURRENT RESUME:
 {resume_section}
 
 TARGET ATS SCORE: 85+
 Current ATS score: {current_score}
-Gaps: {gaps}
+Missing keywords to add naturally: {gaps}
 
-Rewrite to close the gaps.
+Rewrite the resume to close these gaps.
 """
 
 MAX_PASSES = 3
 
 
+def _generate(prompt_user: str) -> str:
+    for attempt in range(1, 4):
+        try:
+            response = _client.chat.completions.create(
+                model=config.OPENAI_MODEL,
+                max_tokens=2000,
+                temperature=0.3,
+                messages=[
+                    {"role": "system", "content": ATS_SYSTEM},
+                    {"role": "user", "content": prompt_user},
+                ],
+            )
+            return response.choices[0].message.content.strip()
+        except RateLimitError:
+            if attempt < 3:
+                wait = 20 * attempt
+                logger.info(f"Rate limit — waiting {wait}s (attempt {attempt}/3)...")
+                time.sleep(wait)
+            else:
+                raise
+
+
 def optimize_resume(resume_text: str, job: dict) -> tuple[str, int]:
     """
-    Run up to MAX_PASSES rewrite attempts.
+    Run up to MAX_PASSES OpenAI rewrite attempts.
     Returns (final_resume_text, final_ats_score).
     """
     job_description = job.get("description", "")
     current_text = resume_text
     current_score, missing = calculate_ats_score(current_text, job_description)
 
-    logger.info(f"ATS optimization start — job {job['id']}, initial score {current_score}")
+    logger.info(f"ATS start — job {job['id']}, initial score {current_score}")
 
     for pass_num in range(1, MAX_PASSES + 1):
         if current_score >= config.ATS_TARGET_SCORE:
-            logger.info(f"Target reached at pass {pass_num - 1}: score {current_score}")
+            logger.info(f"Target {config.ATS_TARGET_SCORE} reached before pass {pass_num}")
             break
 
-        logger.info(f"Pass {pass_num}/{MAX_PASSES} — current score {current_score}, gaps: {missing[:10]}")
+        logger.info(f"Pass {pass_num}/{MAX_PASSES} — score {current_score}, top gaps: {missing[:8]}")
 
-        prompt = ATS_OPTIMIZER_USER.format(
-            job_description=job_description,
+        prompt = ATS_USER.format(
+            job_description=job_description[:3000],
             resume_section=current_text,
             current_score=current_score,
             gaps=", ".join(missing[:20]),
         )
-        response = _client.messages.create(
-            model=config.CLAUDE_MODEL,
-            max_tokens=2000,
-            system=ATS_OPTIMIZER_SYSTEM,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        rewritten = response.content[0].text.strip()
-        new_score, missing = calculate_ats_score(rewritten, job_description)
 
-        if new_score >= current_score:
-            current_text = rewritten
-            current_score = new_score
-        else:
-            logger.warning(f"Pass {pass_num} made score worse ({new_score} < {current_score}), keeping previous")
+        try:
+            rewritten = _generate(prompt)
+            rewritten = re.sub(r"^```[a-z]*\n?", "", rewritten).strip("` \n")
 
-    logger.info(f"ATS optimization done — job {job['id']}, final score {current_score}")
+            new_score, new_missing = calculate_ats_score(rewritten, job_description)
+            if new_score >= current_score:
+                current_text = rewritten
+                current_score = new_score
+                missing = new_missing
+            else:
+                logger.warning(f"Pass {pass_num} regressed ({new_score} < {current_score}) — keeping previous")
+        except Exception as e:
+            logger.error(f"OpenAI ATS pass {pass_num} failed: {e}")
+            break
+
+    logger.info(f"ATS done — job {job['id']}, final score {current_score}")
     return current_text, current_score

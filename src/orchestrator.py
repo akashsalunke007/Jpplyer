@@ -20,30 +20,85 @@ from src.notifications.email_alert import send_error_email, send_human_check_ema
 
 
 # ── Candidate profile & data ─────────────────────────────────────────────────
-# Fill these with your actual details before running.
+
 CANDIDATE_PROFILE = """
-Name: [Your Name]
-Current role: Software Engineer, 4 years experience
-Skills: Python, FastAPI, Django, PostgreSQL, Redis, AWS (EC2/S3/Lambda), Docker, Kubernetes, Git
-Education: B.E. Computer Engineering
-Location: Pune, India
-Preferred: Full-time, backend/fullstack roles, 12–20 LPA
+Name: Soni Kori
+Current role: System Engineer at Infosys (Sep 2025 – Apr 2026)
+Total experience: ~1 year (6+ months professional + 5 months internship at CDAC)
+
+Education:
+  - Master of Computer Applications (MCA), Banasthali Vidyapeeth, CGPA 7.1, Graduated 2025
+  - Bachelor of Science, Banasthali Vidyapeeth, CGPA 8.4
+
+Technical Skills:
+  Languages:          Java, Python, JavaScript
+  Backend Frameworks: Spring Boot, Flask (REST API development)
+  Frontend:           HTML5, CSS3, JavaScript (ES6+), Dynamic Content Rendering
+  Databases:          MySQL, PostgreSQL (Joins, Indexing, Query Optimization, Schema Design)
+  Tools & Platforms:  Git, GitHub, Postman, Unix/Linux, VS Code
+  Concepts:           Data Structures & Algorithms, OOP, MVC Architecture, SDLC, Agile/Scrum
+  Data / ML:          Python ML libraries, Scikit-learn, Pandas, Content-Based Filtering
+
+Professional Experience:
+  - System Engineer, Infosys, Bangalore (Sep 2025 – Apr 2026)
+    * Developed scalable web application features using Python and full-stack practices
+    * Implemented RESTful APIs and integrated with frontend components
+    * Participated in Agile/Scrum sprints — planning, standups, requirement analysis
+    * Wrote clean MVC-pattern code improving team velocity during code reviews
+  - Full Stack Developer Intern, CDAC, New Delhi (Jan 2025 – May 2025)
+    * Built full-stack apps with Spring Boot backend and HTML/CSS/JS frontend
+    * Designed RESTful APIs for CRUD operations with JSON data exchange
+    * Engineered PostgreSQL schemas and optimized SQL queries
+    * Maintained Git/GitHub version control with structured branching
+
+Key Projects:
+  - Infymart: Full-stack e-commerce app (Flask, MySQL, HTML5, CSS3, JavaScript)
+    * Product catalog, user auth, shopping cart, order management
+    * RESTful Flask APIs with MVC pattern, normalized MySQL schema
+  - Movie Recommender System (Python, Scikit-learn, Pandas)
+    * Content-based filtering engine with cosine similarity scoring
+    * Feature engineering and data preprocessing pipeline
+
+Certifications:
+  - Data Structures and Algorithms using Java
+  - Advanced Unix
+  - Advanced Python Concepts
+  - Web Application Development using Flask
+
+Location: India (open to Bangalore, Pune, Delhi, Remote)
+Preferred: Full-time, Software Engineer / Full Stack Developer / Backend Developer roles
 """
 
 CANDIDATE_DATA = {
-    "full_name": "[Your Name]",
-    "email": "[your@email.com]",
-    "phone": "[+91XXXXXXXXXX]",
-    "linkedin": "https://linkedin.com/in/yourprofile",
-    "github": "https://github.com/yourusername",
-    "location": "Pune, India",
-    "years_experience": "4",
-    "current_title": "Software Engineer",
-    "notice_period": "30 days",
-    "expected_salary": "15 LPA",
+    "full_name": "Soni Kori",
+    "first_name": "Soni",
+    "last_name": "Kori",
+    "email": "sonikori9999@gmail.com",
+    "phone": "+919634961848",
+    "linkedin": "https://linkedin.com/in/soni-kori-8b074a22a",
+    "github": "",
+    "location": "India",
+    "city": "Bangalore",
+    "state": "Karnataka",
+    "country": "India",
+    "years_experience": "1",
+    "current_title": "System Engineer",
+    "current_company": "Infosys",
+    "education": "Master of Computer Applications (MCA), Banasthali Vidyapeeth, 2025",
+    "degree": "MCA",
+    "university": "Banasthali Vidyapeeth",
+    "graduation_year": "2025",
+    "notice_period": "Immediately available",
+    "expected_salary": "5 LPA",
+    "skills": "Java, Python, JavaScript, Spring Boot, Flask, HTML5, CSS3, MySQL, PostgreSQL, Git, Agile",
     "cover_letter": (
-        "I am excited to apply for this position. "
-        "My background in Python and backend engineering aligns well with your requirements."
+        "I am excited to apply for this position. I am a Full Stack Developer with an MCA degree "
+        "and professional experience at Infosys building scalable web applications using Python, "
+        "Java, Spring Boot, and Flask. I have hands-on expertise in RESTful API development, "
+        "PostgreSQL/MySQL database design, and Agile development practices. I have delivered "
+        "full-stack projects end-to-end, including an e-commerce platform and a machine learning "
+        "recommendation system. I am eager to contribute my backend and full-stack capabilities "
+        "to a product-driven team and grow as a software engineer."
     ),
 }
 # ─────────────────────────────────────────────────────────────────────────────
@@ -111,7 +166,7 @@ def _maybe_send_report(batch_counter: list[int]) -> None:
 
 def phase_scrape() -> list[dict]:
     logger.info("=== Phase 1: Scrape ===")
-    raw_jobs = scrape_jobs(platform="linkedin")
+    raw_jobs = scrape_jobs(platforms=["linkedin", "indeed"])
     filtered = filter_jobs(raw_jobs)
     qualified = score_jobs(filtered, CANDIDATE_PROFILE)
     config.JOBS_QUEUE_FILE.write_text(json.dumps(qualified, indent=2))
@@ -204,7 +259,7 @@ async def main(phase: str | None, dry_run: bool) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Job application automation pipeline")
     parser.add_argument("--phase", choices=["scrape", "score", "resume", "apply"], default=None)
-    parser.add_argument("--dry-run", action="store_true", help="No submissions, no Twilio/email")
+    parser.add_argument("--dry-run", action="store_true", help="No submissions, no Telegram/email")
     args = parser.parse_args()
 
     asyncio.run(main(args.phase, args.dry_run))

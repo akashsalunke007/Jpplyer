@@ -1,75 +1,96 @@
-"""Apify API wrapper — runs job scraper actors and returns raw job list."""
-import json
-from typing import Any
-from apify_client import ApifyClient
+"""
+Job scraper using JobSpy — completely free, no API key required.
+Scrapes LinkedIn, Indeed, and Glassdoor directly.
+
+JobSpy docs: https://github.com/Bunsly/JobSpy
+"""
 from loguru import logger
 from src import config
 
-_ACTORS = {
-    "linkedin": "curious_coder/linkedin-jobs-scraper",
-    "indeed": "curious_coder/indeed-scraper",
-}
 
-_DEFAULT_LINKEDIN_INPUT = {
-    "countryName": config.JOB_COUNTRY,
-    "locationName": config.JOB_LOCATION,
-    "includeKeyword": config.JOB_KEYWORD,
-    "jobType": "FULLTIME",
-    "datePosted": "week",
-    "pagesToFetch": config.MAX_PAGES_TO_FETCH,
-}
-
-
-def _normalise_linkedin(item: dict) -> dict:
+def _normalise(row: dict) -> dict:
+    """Convert a JobSpy result row into the pipeline's standard job schema."""
+    job_id = str(row.get("id") or row.get("job_url_direct") or hash(row.get("job_url", "")))
     return {
-        "id": item.get("id") or item.get("jobId") or str(hash(item.get("url", ""))),
-        "title": item.get("title", ""),
-        "company": item.get("companyName", ""),
-        "location": item.get("location", ""),
-        "description": item.get("descriptionText") or item.get("description", ""),
-        "url": item.get("applyUrl") or item.get("url", ""),
-        "salary": item.get("salary", ""),
-        "job_type": item.get("jobType", ""),
-        "source": "linkedin",
+        "id": job_id,
+        "title": str(row.get("title", "")),
+        "company": str(row.get("company", "")),
+        "location": str(row.get("location", "")),
+        "description": str(row.get("description") or ""),
+        "url": str(row.get("job_url") or row.get("job_url_direct") or ""),
+        "salary": _format_salary(row),
+        "job_type": str(row.get("job_type") or ""),
+        "source": str(row.get("site") or "unknown"),
+        "date_posted": str(row.get("date_posted") or ""),
     }
 
 
-def _normalise_indeed(item: dict) -> dict:
-    return {
-        "id": item.get("id") or str(hash(item.get("url", ""))),
-        "title": item.get("positionName", ""),
-        "company": item.get("company", ""),
-        "location": item.get("location", ""),
-        "description": item.get("description", ""),
-        "url": item.get("url", ""),
-        "salary": item.get("salary", ""),
-        "job_type": item.get("jobType", ""),
-        "source": "indeed",
-    }
+def _format_salary(row: dict) -> str:
+    lo = row.get("min_amount")
+    hi = row.get("max_amount")
+    currency = row.get("currency", "")
+    interval = row.get("interval", "")
+    if lo and hi:
+        return f"{currency}{lo}–{hi} {interval}".strip()
+    if lo:
+        return f"{currency}{lo}+ {interval}".strip()
+    return ""
 
 
 def scrape_jobs(
-    platform: str = "linkedin",
-    actor_input: dict[str, Any] | None = None,
-    proxy_config: dict | None = None,
+    platforms: list[str] | None = None,
+    keyword: str | None = None,
+    location: str | None = None,
+    results_wanted: int | None = None,
+    hours_old: int | None = None,
 ) -> list[dict]:
-    """Run the Apify actor and return a normalised list of job dicts."""
-    client = ApifyClient(config.APIFY_API_TOKEN)
-    actor_id = _ACTORS.get(platform, _ACTORS["linkedin"])
-    run_input = actor_input or _DEFAULT_LINKEDIN_INPUT.copy()
+    """
+    Scrape jobs from LinkedIn, Indeed, and/or Glassdoor — no API key needed.
 
-    if proxy_config:
-        run_input["proxyConfig"] = proxy_config
-    else:
-        run_input["proxyConfig"] = {"useApifyProxy": True, "apifyProxyGroups": ["DATACENTER"]}
+    Args:
+        platforms:      list of sites to scrape, e.g. ["linkedin", "indeed"]
+                        defaults to ["linkedin", "indeed"]
+        keyword:        search term (default from config)
+        location:       location string (default from config)
+        results_wanted: max results per site (default from config)
+        hours_old:      only jobs posted within this many hours (default 168 = 7 days)
+    """
+    from jobspy import scrape_jobs as _jobspy_scrape   # lazy import — not needed for tests
 
-    logger.info(f"Starting Apify actor '{actor_id}' for platform={platform}")
-    run = client.actor(actor_id).call(run_input=run_input)
-    logger.info(f"Actor run finished: {run['status']} — dataset {run['defaultDatasetId']}")
+    sites = platforms or ["linkedin", "indeed"]
+    kw = keyword or config.JOB_KEYWORD
+    loc = location or config.JOB_LOCATION
+    n = results_wanted or config.JOB_RESULTS_WANTED
+    h = hours_old or config.JOB_HOURS_OLD
 
-    items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
-    logger.info(f"Fetched {len(items)} raw jobs from {platform}")
+    logger.info(f"Scraping jobs: sites={sites}, keyword='{kw}', location='{loc}', max={n}")
 
-    normaliser = _normalise_linkedin if platform == "linkedin" else _normalise_indeed
-    jobs = [normaliser(item) for item in items if item.get("title")]
-    return jobs
+    try:
+        df = _jobspy_scrape(
+            site_name=sites,
+            search_term=kw,
+            location=loc,
+            results_wanted=n,
+            hours_old=h,
+            country_indeed="India",   # for Indeed localisation
+            linkedin_fetch_description=True,  # fetch full JD (slower but needed for ATS)
+        )
+    except Exception as e:
+        logger.error(f"JobSpy scrape failed: {e}")
+        return []
+
+    if df is None or df.empty:
+        logger.warning("JobSpy returned no results")
+        return []
+
+    jobs = [_normalise(row) for row in df.to_dict("records") if row.get("title")]
+    # Drop duplicates by URL
+    seen, unique = set(), []
+    for j in jobs:
+        key = j["url"] or j["id"]
+        if key not in seen:
+            seen.add(key)
+            unique.append(j)
+
+    logger.info(f"Scraped {len(unique)} unique jobs from {sites}")
+    return unique

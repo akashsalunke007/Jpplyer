@@ -4,11 +4,16 @@ from loguru import logger
 
 # Tweak these defaults or pass overrides to filter_jobs()
 DEFAULT_CRITERIA = {
-    "title_keywords": ["software", "engineer", "developer", "backend", "frontend", "fullstack", "python", "java"],
-    "exclude_title_keywords": ["manager", "director", "vp", "intern"],
-    "locations": [],          # empty = accept all
+    # Titles relevant to Soni's full-stack / backend profile
+    "title_keywords": [
+        "software", "engineer", "developer", "full stack", "fullstack",
+        "backend", "java", "python", "spring", "flask", "web developer",
+        "associate", "junior", "trainee",
+    ],
+    "exclude_title_keywords": ["manager", "director", "vp", "lead", "principal", "architect", "intern"],
+    "locations": [],          # empty = accept all locations
     "job_types": ["FULLTIME", "full-time", "full_time", ""],
-    "min_salary": None,       # int in USD/INR; None = skip check
+    "min_salary": None,       # int in INR; None = skip check
     "exclude_companies": [],
 }
 

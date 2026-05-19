@@ -1,4 +1,4 @@
-"""Send batch reports via SendGrid or Gmail SMTP with CSV attachment."""
+"""Send batch reports via Gmail SMTP with CSV attachment — completely free."""
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -9,13 +9,22 @@ from loguru import logger
 from src import config
 
 
-def _build_message(subject: str, html_body: str, csv_data: str, batch_num: int) -> MIMEMultipart:
+def send_report(html_body: str, csv_data: str, batch_num: int) -> None:
+    """Email an HTML report with attached CSV to REPORT_EMAIL_TO via Gmail SMTP."""
+    if not config.GMAIL_ADDRESS or not config.GMAIL_APP_PASSWORD:
+        logger.warning("Gmail not configured — skipping report email")
+        return
+
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    subject = f"Job Application Report — Batch {batch_num} ({date_str})"
+
     msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
-    msg["From"] = config.GMAIL_ADDRESS or "noreply@jobbot.local"
+    msg["From"] = config.GMAIL_ADDRESS
     msg["To"] = config.REPORT_EMAIL_TO
     msg.attach(MIMEText(html_body, "html"))
 
+    # Attach CSV
     attachment = MIMEBase("text", "csv")
     attachment.set_payload(csv_data.encode())
     encoders.encode_base64(attachment)
@@ -24,51 +33,11 @@ def _build_message(subject: str, html_body: str, csv_data: str, batch_num: int) 
         f'attachment; filename="batch_{batch_num}_report.csv"',
     )
     msg.attach(attachment)
-    return msg
 
-
-def send_report(html_body: str, csv_data: str, batch_num: int) -> None:
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    subject = f"Job Application Report — Batch {batch_num} ({date_str})"
-
-    if config.SENDGRID_API_KEY:
-        _send_sendgrid(subject, html_body, csv_data, batch_num)
-    else:
-        _send_gmail(subject, html_body, csv_data, batch_num)
-
-
-def _send_sendgrid(subject: str, html_body: str, csv_data: str, batch_num: int) -> None:
-    import sendgrid
-    from sendgrid.helpers.mail import (
-        Mail, Email, To, Content, Attachment, FileContent, FileName, FileType, Disposition
-    )
-    import base64
-
-    sg = sendgrid.SendGridAPIClient(api_key=config.SENDGRID_API_KEY)
-    mail = Mail(
-        from_email=Email(config.GMAIL_ADDRESS or "noreply@jobbot.local"),
-        to_emails=To(config.REPORT_EMAIL_TO),
-        subject=subject,
-        html_content=Content("text/html", html_body),
-    )
-    encoded_csv = base64.b64encode(csv_data.encode()).decode()
-    attachment = Attachment(
-        file_content=FileContent(encoded_csv),
-        file_name=FileName(f"batch_{batch_num}_report.csv"),
-        file_type=FileType("text/csv"),
-        disposition=Disposition("attachment"),
-    )
-    mail.attachment = attachment
-    response = sg.client.mail.send.post(request_body=mail.get())
-    if response.status_code in (200, 202):
-        logger.info(f"Report email sent via SendGrid: batch {batch_num}")
-    else:
-        logger.error(f"SendGrid returned {response.status_code}")
-
-
-def _send_gmail(subject: str, html_body: str, csv_data: str, batch_num: int) -> None:
-    msg = _build_message(subject, html_body, csv_data, batch_num)
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(config.GMAIL_ADDRESS, config.GMAIL_APP_PASSWORD)
-        server.sendmail(config.GMAIL_ADDRESS, config.REPORT_EMAIL_TO, msg.as_string())
-    logger.info(f"Report email sent via Gmail: batch {batch_num}")
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(config.GMAIL_ADDRESS, config.GMAIL_APP_PASSWORD)
+            server.sendmail(config.GMAIL_ADDRESS, config.REPORT_EMAIL_TO, msg.as_string())
+        logger.info(f"Batch {batch_num} report emailed to {config.REPORT_EMAIL_TO}")
+    except Exception as e:
+        logger.error(f"Report email failed: {e}")

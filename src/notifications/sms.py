@@ -1,28 +1,16 @@
-"""Twilio SMS alert sender."""
-from twilio.rest import Client
+"""
+Notification stubs — phone/SMS notifications removed in favour of email-only.
+These no-ops keep the orchestrator import working without any changes.
+All real alerts are sent via src/notifications/email_alert.py (Gmail SMTP).
+"""
 from loguru import logger
-from src import config
-
-
-def send_sms(message: str) -> bool:
-    """Send an SMS to ALERT_TO_NUMBER. Returns True on success."""
-    try:
-        client = Client(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
-        msg = client.messages.create(
-            body=message[:1600],  # Twilio max body length
-            from_=config.TWILIO_FROM_NUMBER,
-            to=config.ALERT_TO_NUMBER,
-        )
-        logger.info(f"SMS sent: SID={msg.sid}")
-        return True
-    except Exception as e:
-        logger.error(f"SMS send failed: {e}")
-        return False
 
 
 def notify_error(job_id: str, phase: str, error_summary: str) -> None:
-    send_sms(f"[JobBot ERROR]\nJob: {job_id}\nPhase: {phase}\nError: {error_summary[:200]}")
+    """No-op — error details are sent by email_alert.send_error_email()."""
+    logger.debug(f"[notify_error stub] job={job_id} phase={phase}")
 
 
 def notify_human_check(job_id: str, url: str) -> None:
-    send_sms(f"[JobBot] Human check needed\nJob: {job_id}\nURL: {url}\nPlease complete manually.")
+    """No-op — human-check alert is sent by email_alert.send_human_check_email()."""
+    logger.debug(f"[notify_human_check stub] job={job_id}")
